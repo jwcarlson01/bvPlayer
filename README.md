@@ -71,3 +71,10 @@ bvPlayer will run a 1080p video on a low end CPU at 20 fps, while using about 60
 bvPlayer keeps only a small number of frames loaded in RAM, so when running a 1080p video it uses less than 200 MB of RAM.
 
 bvPlayer writes its images to temp files, therefore it uses the disk. Expect at most 5MB/s at 1080p.
+
+# Contact
+I'm always open for suggestions. View the [issues page](https://github.com/jwcarlson01/bvPlayer/issues) for issues.
+
+Joshua Carlson - joshuacarlson@cedarville.edu
+<br/><br/>
+*Readme inspired by [tkvideo](https://github.com/huskeee/tkvideo)*
