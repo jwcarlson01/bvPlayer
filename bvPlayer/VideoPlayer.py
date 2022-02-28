@@ -10,9 +10,11 @@ import threading
 import queue
 import os
 import sys
+import contextlib
 
 class VideoPlayer:
     def __init__(self, root, file, **kwargs):
+        
         self.dest = file
         self.cap = cv2.VideoCapture(self.dest)
         
@@ -24,8 +26,9 @@ class VideoPlayer:
         
         self.root = root
         self.root.overrideredirect(1)
-        root.geometry('+0+0')
+        self.root.geometry('+0+0')
         self.resize = False
+        self.root.withdraw()
 
         for k, val in kwargs.items():
             if k == "fps":
@@ -35,10 +38,10 @@ class VideoPlayer:
                     return
                 self.newfps = val
             elif k == "pos":
-                root.geometry("+%d+%d" %val)
+                self.root.geometry("+%d+%d" %val)
             elif k == "draggable" and val == True:
-                root.bind('<Button-1>',self.clickPos)
-                root.bind('<B1-Motion>', self.dragWin)
+                self.root.bind('<Button-1>',self.clickPos)
+                self.root.bind('<B1-Motion>', self.dragWin)
                 self.clickx = None
                 self.clicky = None
             elif k == "dim":
@@ -48,15 +51,19 @@ class VideoPlayer:
                 self.height = val[1]
                 self.resize = True
             elif k == "videoOptions" and val == True:
-                root.bind('<Button-3>', self.options)
-                
-        self.canvas = Canvas(root, width = self.width, height = self.height)
+                self.root.bind('<Button-3>', self.options)
+
+    def play(self):
+        self.root.deiconify()
+        
+        self.canvas = Canvas(self.root, width = self.width, height = self.height)
         self.canvas.pack()
                 
         self.fr_lock = threading.Lock()
         self.frames_read = queue.Queue()
         self.frame_files = queue.Queue() # list of temp files
         self.frame_times = []
+        self.kill_threads = False
 
         self.player = MediaPlayer(self.dest)
         self.player.set_pause(True)
@@ -78,7 +85,7 @@ class VideoPlayer:
         self.t1.join()
         self.t2.join()
         self.t3.join()
-
+        
     def clickPos(self, event):
         time.sleep(.2)
         self.clickx = event.x
@@ -92,16 +99,20 @@ class VideoPlayer:
         y = event.y - self.clicky + winy
         self.root.geometry("+%d+%d" %(x,y))
 
+    def kill(self):
+        self.kill_threads = True
+        time.sleep(1)
+        self.player.set_pause(True)
+        self.root.destroy()
+
     def options(self,event):
-        def kill():
-            os._exit(1)
 
         def restart():
             os.execl(sys.executable, sys.executable, *sys.argv)
             
         m = Menu(self.root, tearoff = 0)
         m.add_command(label = "restart", command = restart)
-        m.add_command(label = "quit", command=kill)
+        m.add_command(label = "quit", command=self.kill)
         m.tk_popup(event.x_root, event.y_root)
         
     def randSelect(self):
@@ -138,6 +149,8 @@ class VideoPlayer:
         if(self.fps == self.newfps):
             self.generateFrameTimes()
             while(self.cap.isOpened()):
+                if(self.kill_threads == True):
+                    return
 
                 if(self.frames_read.qsize() > 10):
                     time.sleep(.01)
@@ -157,6 +170,9 @@ class VideoPlayer:
             walker = 0
             
             while(self.cap.isOpened()):
+                if(self.kill_threads == True):
+                    return
+                
                 if(self.frames_read.qsize() > 10):
                     time.sleep(.01)
                     continue
@@ -170,29 +186,44 @@ class VideoPlayer:
                     self.frames_read.put(frame)
 
                     walker += 1
-                    
+
+    # https://stackoverflow.com/questions/13379742/
+    # right-way-to-clean-up-a-temporary-folder-in-python-class
+    @contextlib.contextmanager
+    def make_temp_directory(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        try:
+            yield temp_dir
+        finally:
+            temp_dir.cleanup()
+            
     def writeFrames(self):
 
-        while True:
-
-            if self.frame_files.qsize() > 20:
-                time.sleep(.1)
-                continue
-            
-            p = tempfile.NamedTemporaryFile('wb')
-            p.name = p.name + '.jpg'
-            
-            with self.fr_lock:
-                if self.frames_read.empty():
-                    break
+        with self.make_temp_directory() as temp_dir:
+            while True:
                 
-                frame = self.frames_read.get()
-                self.frame_files.put(p)
+                if(self.kill_threads == True):
+                    temp_dir.cleanup()
+                    return
 
-            if self.resize == True:
-                frame = cv2.resize(frame, (self.width,self.height),
-                                    interpolation = cv2.INTER_AREA)
-            cv2.imwrite(p.name,frame)
+                if self.frame_files.qsize() > 20:
+                    time.sleep(.1)
+                    continue
+                
+                p = tempfile.TemporaryFile('wb', dir = temp_dir.name)
+                p.name = p.name + '.jpg'
+                
+                with self.fr_lock:
+                    if self.frames_read.empty():
+                        break
+                    
+                    frame = self.frames_read.get()
+                    self.frame_files.put(p)
+
+                if self.resize == True:
+                    frame = cv2.resize(frame, (self.width,self.height),
+                                        interpolation = cv2.INTER_AREA)
+                cv2.imwrite(p.name,frame)
 
     def playVideo(self):
         counter = 0
@@ -211,6 +242,10 @@ class VideoPlayer:
             
         running_time = time.time()
         while(not self.frame_files.empty()):
+            
+            if(self.kill_threads == True):
+                    break
+                
             audio_frame, val = self.player.get_frame()
 
             if(val == 'eof' or len(self.frame_times) == 0):
@@ -249,6 +284,7 @@ class VideoPlayer:
             img.image = render
             img.place(x=0, y=0)
             load.close()
+            pop.close()
 
             self.root.update()
             
@@ -260,6 +296,5 @@ class VideoPlayer:
             
             if (delay > targetTime):
                 time.sleep(targetTime)
-
-        self.player.set_pause(True)
-        self.root.destroy()
+        
+        self.kill()
