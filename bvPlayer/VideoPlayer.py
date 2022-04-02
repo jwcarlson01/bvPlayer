@@ -210,7 +210,7 @@ class VideoPlayer:
                     time.sleep(.1)
                     continue
                 
-                p = tempfile.TemporaryFile('wb', dir = temp_dir.name)
+                p = tempfile.NamedTemporaryFile('wb', dir = temp_dir.name)
                 p.name = p.name + '.jpg'
                 
                 with self.fr_lock:
