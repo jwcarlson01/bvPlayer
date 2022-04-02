@@ -12,6 +12,3 @@ class bvPlayer:
             player.kill()
             
         root.mainloop()
-
-bvPlayer('tree480.mp4', fps = 28, pos = (0, 0), draggable = True,
-         dim = (1260,720), videoOptions = True)
