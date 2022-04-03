@@ -104,6 +104,7 @@ class VideoPlayer:
         time.sleep(1)
         self.player.set_pause(True)
         self.root.destroy()
+        os._exit(1)
 
     def options(self,event):
 
@@ -210,8 +211,9 @@ class VideoPlayer:
                     time.sleep(.1)
                     continue
                 
-                p = tempfile.NamedTemporaryFile('wb', dir = temp_dir.name)
-                p.name = p.name + '.jpg'
+                p = tempfile.NamedTemporaryFile('wb', suffix = '.jpg',
+                                                dir = temp_dir.name,
+                                                delete = False)
                 
                 with self.fr_lock:
                     if self.frames_read.empty():
@@ -223,7 +225,9 @@ class VideoPlayer:
                 if self.resize == True:
                     frame = cv2.resize(frame, (self.width,self.height),
                                         interpolation = cv2.INTER_AREA)
+                    
                 cv2.imwrite(p.name,frame)
+                p.close()
 
     def playVideo(self):
         counter = 0
@@ -233,6 +237,7 @@ class VideoPlayer:
         targetTime = 1/fps
 
         img = None
+        pop = None
         self.player.set_pause(False)
 
         # load up the audio
@@ -244,7 +249,7 @@ class VideoPlayer:
         while(not self.frame_files.empty()):
             
             if(self.kill_threads == True):
-                    break
+                return
                 
             audio_frame, val = self.player.get_frame()
 
@@ -266,6 +271,7 @@ class VideoPlayer:
 
             # frame skipping
             if (delay < -targetTime):
+                os.remove(pop.name)
                 continue
 
             prevIm = img
@@ -276,6 +282,7 @@ class VideoPlayer:
             try:
                 load = Image.open(pop.name)
             except:
+                os.remove(pop.name)
                 continue
 
             #load.draft("RGB",(2560,1080)) # doesn't do anything?
@@ -285,6 +292,8 @@ class VideoPlayer:
             img.place(x=0, y=0)
             load.close()
             pop.close()
+
+            os.remove(pop.name)
 
             self.root.update()
             
@@ -296,5 +305,5 @@ class VideoPlayer:
             
             if (delay > targetTime):
                 time.sleep(targetTime)
-        
+
         self.kill()
